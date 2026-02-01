@@ -1,11 +1,10 @@
 import os
 import datetime
-import google.generativeai as genai
+from google import genai
 
-# Configure Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# ✅ Configure Gemini
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-# 🗓️ Day-wise content rotation
 DAY_ROTATION = {
     "Monday": "facts_explainer",
     "Tuesday": "did_you_know",
@@ -16,92 +15,57 @@ DAY_ROTATION = {
     "Sunday": "light_recap"
 }
 
-
-def _get_today_style():
-    """Returns today's content style based on weekday"""
-    today = datetime.datetime.now().strftime("%A")
+def _today_theme():
+    today = datetime.datetime.utcnow().strftime("%A")
     return DAY_ROTATION.get(today, "cinematic_story")
 
-
-# 🧠 1️⃣ INITIAL PROMPT GENERATOR
 def generate_initial_prompt():
-    """
-    Generates the FIRST cinematic video prompt
-    based on day-wise rotation.
-    """
-
-    style = _get_today_style()
-
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    theme = _today_theme()
 
     instruction = f"""
 Generate ONE cinematic AI video prompt.
 
-Content Style: {style}
+Theme: {theme}
+Style: hyper-realistic, cinematic, 4K, smooth camera motion
+Topics: nature, travel, futuristic, epic aerial scenery
 
-Visual Rules:
-- Hyper-realistic
-- Cinematic lighting
-- 4K quality
-- Smooth camera motion
-- Short 4-second visual moment
-
-Creative Rules:
+Rules:
+- One paragraph
 - No quotes
-- No explanations
-- One single paragraph
-- No text overlays
-- No narration cues
+- No explanation
 - YouTube-ready
-
-Theme Ideas:
-Nature, travel, futuristic worlds, aerial views, epic landscapes
-
-Goal:
-This is the FIRST clip of a longer cinematic sequence.
 """
 
-    response = model.generate_content(instruction)
-    prompt = response.text.strip()
+    response = client.models.generate_content(
+        model="gemini-1.5-flash",
+        contents=instruction
+    )
 
-    print("🧠 Initial Gemini Prompt:", prompt)
+    prompt = response.text.strip()
+    print("🧠 Gemini Initial Prompt:", prompt)
     return prompt
 
 
-# 🔁 2️⃣ CONTINUATION PROMPT GENERATOR
-def generate_continuation_prompt(previous_prompt, clip_index):
-    """
-    Generates a FOLLOW-UP prompt that continues the same scene
-    while evolving visuals slightly.
-    """
-
-    model = genai.GenerativeModel("gemini-1.5-flash")
-
+def generate_continuation_prompt(previous_prompt: str, part: int):
     instruction = f"""
-You are continuing a cinematic video sequence.
+Continue this cinematic video story.
 
-Previous Scene Prompt:
+Previous scene:
 {previous_prompt}
 
-Task:
-Generate the NEXT 4-second cinematic prompt.
-
-Rules:
-- Must feel like the SAME world and scene
-- Advance time, camera angle, or motion slightly
-- Introduce subtle variation (lighting, movement, perspective)
-- Do NOT repeat the same description
-- No quotes
-- No explanations
+Create PART {part}:
+- Same environment & mood
+- New camera angle or motion
+- Visually different from previous
+- Seamless continuation
 - One paragraph only
-- Cinematic, hyper-realistic, smooth motion
-- No text, no narration
-
-This is clip number {clip_index} in a continuous 30-second video.
 """
 
-    response = model.generate_content(instruction)
-    prompt = response.text.strip()
+    response = client.models.generate_content(
+        model="gemini-1.5-flash",
+        contents=instruction
+    )
 
-    print(f"🧠 Continuation Prompt {clip_index}:", prompt)
+    prompt = response.text.strip()
+    print(f"🧠 Gemini Prompt Part {part}:", prompt)
     return prompt
