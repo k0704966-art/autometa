@@ -1,54 +1,73 @@
 import os
 import json
-from googleapiclient.discovery import build
+import time
 from google.oauth2 import service_account
-from uploader import upload_to_drive
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
-def run_connection_test():
+def test_drive_with_transfer():
+    # 1. Setup
     folder_id = os.getenv("FOLDER_ID")
-    test_filename = "drive_test_success.txt"
+    your_email = "k0704966@gmail.com" # <--- CHANGE THIS
+    test_file = "connection_test.txt"
     
-    # Load credentials to check permissions first
+    print(f"🛠️ Initializing Test for Folder: {folder_id}")
+    
+    # Load Credentials
     info = json.loads(os.environ["GDRIVE_CREDENTIALS"])
     creds = service_account.Credentials.from_service_account_info(
         info, scopes=['https://www.googleapis.com/auth/drive']
     )
     service = build('drive', 'v3', credentials=creds)
 
-    print("🛠️ Starting Drive Connection Test...")
+    # 2. Create local test file
+    with open(test_file, "w") as f:
+        f.write(f"Test successful at {time.ctime()}. Robot has handed this file to you.")
 
-    # 1. PRE-CHECK: Can the robot see the folder?
     try:
-        print(f"🔍 Checking access to Folder ID: {folder_id}...")
-        folder_metadata = service.files().get(
-            fileId=folder_id, 
-            fields='name, capabilities',
+        # 3. Upload the file
+        print("📡 Step 1: Uploading tiny file...")
+        file_metadata = {'name': test_file, 'parents': [folder_id]}
+        media = MediaFileUpload(test_file, mimetype='text/plain')
+        
+        # We use supportsAllDrives=True to ensure it respects the shared folder
+        uploaded_file = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id',
+            supportsAllDrives=True 
+        ).execute()
+        
+        file_id = uploaded_file.get('id')
+        print(f"✅ File Uploaded! ID: {file_id}")
+
+        # 4. Transfer Ownership (The key to fixing the Quota error)
+        print(f"🔑 Step 2: Transferring ownership to {your_email}...")
+        permission = {
+            'role': 'owner',
+            'type': 'user',
+            'emailAddress': your_email
+        }
+        
+        # This moves the file into YOUR storage quota
+        service.permissions().create(
+            fileId=file_id,
+            body=permission,
+            transferOwnership=True,
             supportsAllDrives=True
         ).execute()
-        print(f"✅ Robot found folder: '{folder_metadata.get('name')}'")
         
-        can_add_children = folder_metadata.get('capabilities', {}).get('canAddChildren')
-        print(f"ℹ️ Permission to write: {'YES' if can_add_children else 'NO'}")
-        
-    except Exception as e:
-        print(f"❌ PRE-CHECK FAILED: Cannot find folder. Error: {e}")
-        print("💡 FIX: Ensure you shared the folder with the service account email.")
-        return
+        print("\n✨ ALL TESTS PASSED!")
+        print(f"Check your Drive folder '{folder_id}'. You should see '{test_file}' owned by YOU.")
 
-    # 2. Create tiny dummy file
-    with open(test_filename, "w") as f:
-        f.write("Google Drive connection is working perfectly!")
-
-    # 3. Attempt Upload using updated uploader logic
-    try:
-        print(f"📡 Attempting upload...")
-        upload_to_drive(test_filename, folder_id)
-        print("\n✨ TEST SUCCESS: Check your Google Drive now!")
     except Exception as e:
-        print(f"\n❌ UPLOAD FAILED: {str(e)}")
+        print(f"\n❌ TEST FAILED: {str(e)}")
+        if "storageQuotaExceeded" in str(e):
+            print("\n💡 DIAGNOSIS: The 'Transfer' failed because the Robot tried to 'own' it for too long.")
+            print("Action: Make sure the Service Account is an EDITOR on the folder.")
     finally:
-        if os.path.exists(test_filename):
-            os.remove(test_filename)
+        if os.path.exists(test_file):
+            os.remove(test_file)
 
 if __name__ == "__main__":
-    run_connection_test()
+    test_drive_with_transfer()
