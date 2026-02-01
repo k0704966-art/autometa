@@ -1,38 +1,68 @@
-name: Daily 60s Video Gen
+name: Upload to Google Drive (GitHub)
+
 on:
+  workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *'
-  workflow_dispatch: # Allows manual testing
+    - cron: "0 10 * * *"
 
 jobs:
-  generate:
+  upload:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.11' # Upgraded to 3.11 to support latest Google libraries
+          python-version: "3.11"
 
-      - name: Install System and Python Dependencies
+      - name: Install dependencies
         run: |
-          # 1. Update the package lists to prevent 404 errors
-          sudo apt-get update --fix-missing
-          
-          # 2. Install ffmpeg for video stitching
-          sudo apt-get install -y ffmpeg
-          
-          # 3. Upgrade pip and install requirements
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          
-          # 4. Force upgrade of Google Auth to remove EOL warnings
-          pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib
+          pip install google-api-python-client google-auth google-auth-httplib2
 
-      - name: Run Generator
+      - name: Upload file to Drive
         env:
-          LEONARDO_API_KEY: ${{ secrets.LEONARDO_API_KEY }}
-          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
-          FOLDER_ID: ${{ secrets.FOLDER_ID }}
-        run: python test_drive.py
+          GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
+        run: |
+          python test_drive.py
+
+
+
+# name: Daily 60s Video Gen
+# on:
+#   schedule:
+#     - cron: '0 0 * * *'
+#   workflow_dispatch: # Allows manual testing
+
+# jobs:
+#   generate:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v3
+
+#       - name: Set up Python
+#         uses: actions/setup-python@v4
+#         with:
+#           python-version: '3.11' # Upgraded to 3.11 to support latest Google libraries
+
+#       - name: Install System and Python Dependencies
+#         run: |
+#           # 1. Update the package lists to prevent 404 errors
+#           sudo apt-get update --fix-missing
+          
+#           # 2. Install ffmpeg for video stitching
+#           sudo apt-get install -y ffmpeg
+          
+#           # 3. Upgrade pip and install requirements
+#           python -m pip install --upgrade pip
+#           pip install -r requirements.txt
+          
+#           # 4. Force upgrade of Google Auth to remove EOL warnings
+#           pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib
+
+#       - name: Run Generator
+#         env:
+#           LEONARDO_API_KEY: ${{ secrets.LEONARDO_API_KEY }}
+#           GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+#           FOLDER_ID: ${{ secrets.FOLDER_ID }}
+#         run: python test_drive.py
