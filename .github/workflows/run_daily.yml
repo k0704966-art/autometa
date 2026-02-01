@@ -15,7 +15,13 @@ jobs:
           python-version: '3.9'
       - name: Install deps
         run: |
-          sudo apt-get install ffmpeg
+          # 1. Update the package lists to prevent 404 errors
+          sudo apt-get update --fix-missing
+          
+          # 2. Install ffmpeg and other system dependencies
+          sudo apt-get install -y ffmpeg
+          
+          # 3. Install Python dependencies
           pip install -r requirements.txt
       - name: Run Generator
         env:
