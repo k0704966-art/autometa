@@ -1,31 +1,35 @@
-name: Upload to Google Drive (GitHub)
+name: Daily AI Video Automation
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: "0 10 * * *"
+    # Runs at 00:00 UTC every day
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    # Allows you to run it manually from the "Actions" tab for testing
 
 jobs:
-  upload:
+  build-and-run:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
-          pip install google-api-python-client google-auth google-auth-httplib2
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: Upload file to Drive
+      - name: Run Video Automation
         env:
+          LEONARDO_API_KEY: ${{ secrets.LEONARDO_API_KEY }}
           GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
-        run: |
-          python main.py
-
+        run: python main.py
 
 
 # name: Daily 60s Video Gen
