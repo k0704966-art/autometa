@@ -1,51 +1,36 @@
 import os
 import json
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-def upload_to_drive(file_path, folder_id):
-    # 1. Parse credentials from GitHub Secret
-    info = json.loads(os.environ["GDRIVE_CREDENTIALS"])
+def upload_video_to_drive(file_path, folder_name="ytauto"):
+    SCOPES = ["https://www.googleapis.com/auth/drive"]
     
-    # 2. Define Scopes explicitly for Python 3.11+ compatibility
-    SCOPES = ['https://www.googleapis.com/auth/drive.file']
-    creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
-    
-    # 3. Build the Service
-    service = build('drive', 'v3', credentials=creds)
-
-    # 4. Prepare Metadata
-    file_metadata = {
-        'name': os.path.basename(file_path),
-        'parents': [folder_id]
-    }
-    
-    # 5. Use Resumable Upload (Better for larger 60s video files)
-    media = MediaFileUpload(
-        file_path, 
-        mimetype='video/mp4', 
-        resumable=True
+    # Load token from your working GitHub Secret
+    creds = Credentials.from_authorized_user_info(
+        json.loads(os.environ["GOOGLE_TOKEN"]), 
+        SCOPES
     )
+    drive = build("drive", "v3", credentials=creds)
+
+    # Find or Create Folder
+    query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    results = drive.files().list(q=query, spaces="drive", fields="files(id)").execute()
+    folders = results.get("files", [])
+
+    if folders:
+        folder_id = folders[0]["id"]
+    else:
+        folder_metadata = {"name": folder_name, "mimeType": "application/vnd.google-apps.folder"}
+        folder = drive.files().create(body=folder_metadata, fields="id").execute()
+        folder_id = folder["id"]
+
+    # Upload Media (Resumable for larger video files)
+    media = MediaFileUpload(file_path, mimetype="video/mp4", resumable=True)
+    file_metadata = {"name": os.path.basename(file_path), "parents": [folder_id]}
     
-    print(f"📡 Starting resumable upload of {file_path}...")
-    
-    try:
-        request = service.files().create(
-            body=file_metadata, 
-            media_body=media, 
-            fields='id'
-        )
-        
-        response = None
-        while response is None:
-            status, response = request.next_chunk()
-            if status:
-                print(f"   ⬆️ Uploaded {int(status.progress() * 100)}%")
-        
-        print(f"✅ Upload Complete! File ID: {response.get('id')}")
-        return response.get('id')
-        
-    except Exception as e:
-        print(f"❌ Google Drive Upload Error: {e}")
-        raise e
+    print(f"📡 Uploading {file_path} to Drive...")
+    file = drive.files().create(body=file_metadata, media_body=media, fields="id").execute()
+    print(f"✅ Upload success! File ID: {file.get('id')}")
+    return file.get('id')
