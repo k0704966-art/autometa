@@ -1,11 +1,9 @@
 import os
 import time
 import requests
-from uploader import upload_to_drive
 
 # Config
 API_KEY = os.getenv("LEONARDO_API_KEY")
-FOLDER_ID = os.getenv("FOLDER_ID")
 PROMPT = "A cinematic close-up of a high-tech robot eye blinking, 4k, neon reflections"
 
 headers = {
@@ -14,79 +12,19 @@ headers = {
     "accept": "application/json"
 }
 
-def trigger_test_gen():
-    url = "https://cloud.leonardo.ai/api/rest/v1/generations-text-to-video"
-    payload = {
-        "prompt": PROMPT, 
-        "isPublic": False,
-        "model": "MOTION2"
-    }
-    
-    print(f"🚀 Triggering ONE test clip...")
+print("🧪 STEP 1: TEST API TRIGGER")
+url = "https://cloud.leonardo.ai/api/rest/v1/generations-text-to-video"
+payload = {"prompt": PROMPT, "isPublic": False, "model": "MOTION2"}
+
+try:
     response = requests.post(url, json=payload, headers=headers)
+    print(f"DEBUG Status Code: {response.status_code}")
     res = response.json()
-    
-    # DEBUG: See what the trigger returns
-    print(f"DEBUG Trigger Response: {res}")
-    
-    if 'motionVideoGenerationJob' in res:
-        return res['motionVideoGenerationJob']['generationId']
-    else:
-        print(f"❌ API Error: {res}")
-        return None
+    print(f"DEBUG Response Body: {res}")
+except Exception as e:
+    print(f"❌ Failed to even talk to the API: {e}")
 
-def wait_and_download(gen_id, name):
-    url = f"https://cloud.leonardo.ai/api/rest/v1/generations/{gen_id}"
-    print(f"⏳ Monitoring Job ID: {gen_id}")
-    
-    start_time = time.time()
-    timeout = 600 # 10 minutes maximum
-    
-    while True:
-        # Check for timeout
-        if time.time() - start_time > timeout:
-            print("❌ TIMEOUT: Video generation took longer than 10 minutes.")
-            return None
-
-        time.sleep(30) 
-        response = requests.get(url, headers=headers)
-        res = response.json()
-        
-        # DEBUG: Let's see exactly what the job status is
-        job = res.get('generations_by_pk')
-        if not job:
-            print("DEBUG: API returned empty 'generations_by_pk'. Retrying...")
-            continue
-            
-        status = job.get('status')
-        video_url = job.get('generated_video_all_mp4_url')
-        
-        print(f"DEBUG: Current Status: [{status}] | URL Available: {bool(video_url)}")
-        
-        if status == 'COMPLETE' and video_url:
-            print(f"✅ Ready! Downloading...")
-            video_data = requests.get(video_url).content
-            with open(name, "wb") as f:
-                f.write(video_data)
-            return name
-        elif status == 'FAILED':
-            print(f"❌ Generation failed on Leonardo's side.")
-            return None
-
-# --- Test Execution ---
-print("🧪 STARTING SINGLE CLIP TEST (WITH DEBUGGING)")
-gid = trigger_test_gen()
-
-if gid:
-    file_path = wait_and_download(gid, "test_clip.mp4")
-    if file_path:
-        print("\n☁️ Uploading to Google Drive...")
-        upload_to_drive("test_clip.mp4", FOLDER_ID)
-        print("\n🎉 SUCCESS!")
-    else:
-        print("❌ Script stopped (Timeout or Failure).")
-else:
-    print("❌ API did not provide a Generation ID.")
+# If we get here and see the Response Body, the API is working!
 
 
 
