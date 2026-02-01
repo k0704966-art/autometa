@@ -6,23 +6,45 @@ from googleapiclient.http import MediaFileUpload
 
 def upload_video_to_drive(file_path, folder_name="ytauto"):
     SCOPES = ["https://www.googleapis.com/auth/drive"]
-    creds = Credentials.from_authorized_user_info(json.loads(os.environ["GOOGLE_TOKEN"]), SCOPES)
-    drive = build("drive", "v3", credentials=creds)
-
-    # Find folder
-    query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
-    results = drive.files().list(q=query, fields="files(id)").execute()
-    folders = results.get("files", [])
-    folder_id = folders[0]["id"] if folders else None
-
-    if not folder_id:
-        print("📁 Folder not found, creating it...")
-        folder_metadata = {"name": folder_name, "mimeType": "application/vnd.google-apps.folder"}
-        folder = drive.files().create(body=folder_metadata, fields="id").execute()
-        folder_id = folder["id"]
-
-    media = MediaFileUpload(file_path, mimetype="video/mp4", resumable=True)
-    file_metadata = {"name": os.path.basename(file_path), "parents": [folder_id]}
     
-    file = drive.files().create(body=file_metadata, media_body=media, fields="id").execute()
-    print(f"✅ Drive Upload Success! ID: {file.get('id')}")
+    # Load token from your GitHub Secret
+    creds_info = json.loads(os.environ["GOOGLE_TOKEN"])
+    creds = Credentials.from_authorized_user_info(creds_info, SCOPES)
+    
+    # Refresh token if expired
+    if creds.expired and creds.refresh_token:
+        from google.auth.transport.requests import Request
+        creds.refresh(Request())
+
+    service = build("drive", "v3", credentials=creds)
+
+    # 1. Find or create the folder
+    query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    results = service.files().list(q=query, fields="files(id)").execute()
+    folders = results.get("files", [])
+
+    if folders:
+        folder_id = folders[0]["id"]
+        print(f"📁 Using existing folder: {folder_name} ({folder_id})")
+    else:
+        folder_metadata = {"name": folder_name, "mimeType": "application/vnd.google-apps.folder"}
+        folder = service.files().create(body=folder_metadata, fields="id").execute()
+        folder_id = folder["id"]
+        print(f"📁 Created new folder: {folder_name} ({folder_id})")
+
+    # 2. Upload the file
+    file_metadata = {
+        "name": os.path.basename(file_path),
+        "parents": [folder_id]
+    }
+    media = MediaFileUpload(file_path, mimetype="video/mp4", resumable=True)
+    
+    print(f"📡 Uploading {file_path}...")
+    file = service.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields="id"
+    ).execute()
+    
+    print(f"✅ Drive Upload Success! File ID: {file.get('id')}")
+    return file.get('id')
