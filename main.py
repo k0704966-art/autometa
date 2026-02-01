@@ -14,6 +14,9 @@ HEADERS = {
 
 GENERATE_URL = "https://cloud.leonardo.ai/api/rest/v1/generations-text-to-video"
 STATUS_URL = "https://cloud.leonardo.ai/api/rest/v1/generations/{}"
+MAX_WAIT_SECONDS = 20 * 60   # 20 minutes
+POLL_INTERVAL = 30          # seconds
+
 
 
 def generate_video():
