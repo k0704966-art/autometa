@@ -31,26 +31,46 @@ def generate_video():
     gen_id = res['motionVideoGenerationJob']['generationId']
     print(f"⏳ Generation ID: {gen_id}. Polling for completion...")
 
-    # Poll every 30 seconds for up to 10 minutes
     for i in range(20):
         time.sleep(30)
         status_url = f"https://cloud.leonardo.ai/api/rest/v1/generations/{gen_id}"
         status_res = requests.get(status_url, headers=HEADERS).json()
         
+        # Accessing the generation data
         job = status_res.get('generations_by_pk', {})
         status = job.get('status')
-        print(f"   [Check {i+1}] Current Status: {status}")
+        print(f"   [Check {i+1}] Status: {status}")
         
         if status == 'COMPLETE':
-            # Support multiple key formats Leonardo uses for the MP4 URL
-            return job.get('generated_video_all_mp4_url') or job.get('motionMP4URL')
-        elif status == 'FAILED':
-            print("❌ Video generation failed on Leonardo's end.")
+            # Check all possible URL locations in the response
+            # 1. Check generated_videos list (Most common for newer API)
+            videos = job.get('generated_videos', [])
+            if videos and len(videos) > 0:
+                return videos[0].get('url')
+            
+            # 2. Check motionVideoUrl field
+            if job.get('motionVideoUrl'):
+                return job.get('motionVideoUrl')
+                
+            # 3. Check legacy fields
+            url = job.get('generated_video_all_mp4_url') or job.get('motionMP4URL')
+            if url:
+                return url
+
+            # 4. Deep check into variations if it exists
+            variations = job.get('motion_variations', [])
+            if variations:
+                return variations[0].get('url')
+
+            print("⚠️ Status is COMPLETE but no URL found in standard fields.")
+            print(f"DEBUG DATA: {job.keys()}") # Helps identify new fields
             return None
             
-    print("❌ Polling timed out.")
+        elif status == 'FAILED':
+            return None
+            
     return None
-
+    
 def main():
     # Step 1: Generate
     video_url = generate_video()
