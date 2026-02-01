@@ -51,14 +51,37 @@ def generate_video():
         print(f"🔄 Status: {status}")
 
         if status == "COMPLETE":
-            videos = job.get("generated_videos", [])
+            print("✅ Generation COMPLETE")
+            print("🔍 Full job keys:", job.keys())
+            
+            # 1️⃣ New API (most common)
+            videos = job.get("generated_videos")
             if videos:
+                print("🎥 generated_videos found")
                 return videos[0].get("url")
-            print("❌ No video URL found")
-            return None
-
-        if status == "FAILED":
-            print("❌ Generation failed")
+            
+            # 2️⃣ Motion-specific fields
+            for key in [
+                "motionVideoUrl",
+                "motionMP4URL",
+                "generated_video_all_mp4_url",
+                "video_url",
+                "mp4_url"
+            ]:
+                if job.get(key):
+                    print(f"🎥 Found video URL in field: {key}")
+                    return job[key]
+            
+            # 3️⃣ Deep scan (last-resort but reliable)
+            for v in job.values():
+                if isinstance(v, dict):
+                    for val in v.values():
+                        if isinstance(val, str) and val.endswith(".mp4"):
+                            print("🎥 Found mp4 via deep scan")
+                            return val
+            
+            print("❌ COMPLETE but no video URL found")
+            print("🔎 Full job dump:", job)
             return None
 
     print("⏰ Generation timed out")
