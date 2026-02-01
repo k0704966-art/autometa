@@ -1,7 +1,6 @@
 import os
 import time
 import requests
-from moviepy.video.io.VideoFileClip import VideoFileClip
 from uploader import upload_to_drive
 
 # Config
@@ -27,6 +26,9 @@ def trigger_test_gen():
     response = requests.post(url, json=payload, headers=headers)
     res = response.json()
     
+    # DEBUG: See what the trigger returns
+    print(f"DEBUG Trigger Response: {res}")
+    
     if 'motionVideoGenerationJob' in res:
         return res['motionVideoGenerationJob']['generationId']
     else:
@@ -35,51 +37,56 @@ def trigger_test_gen():
 
 def wait_and_download(gen_id, name):
     url = f"https://cloud.leonardo.ai/api/rest/v1/generations/{gen_id}"
-    print(f"⏳ Waiting for render...")
+    print(f"⏳ Monitoring Job ID: {gen_id}")
+    
+    start_time = time.time()
+    timeout = 600 # 10 minutes maximum
     
     while True:
+        # Check for timeout
+        if time.time() - start_time > timeout:
+            print("❌ TIMEOUT: Video generation took longer than 10 minutes.")
+            return None
+
         time.sleep(30) 
         response = requests.get(url, headers=headers)
         res = response.json()
         
+        # DEBUG: Let's see exactly what the job status is
         job = res.get('generations_by_pk')
-        if not job: continue
+        if not job:
+            print("DEBUG: API returned empty 'generations_by_pk'. Retrying...")
+            continue
             
         status = job.get('status')
-        # Check for COMPLETE status AND ensure a URL actually exists
         video_url = job.get('generated_video_all_mp4_url')
         
+        print(f"DEBUG: Current Status: [{status}] | URL Available: {bool(video_url)}")
+        
         if status == 'COMPLETE' and video_url:
-            print(f"✅ URL Found! Downloading test clip...")
+            print(f"✅ Ready! Downloading...")
             video_data = requests.get(video_url).content
             with open(name, "wb") as f:
                 f.write(video_data)
             return name
-        elif status == 'COMPLETE' and not video_url:
-            print("🕒 Status COMPLETE but URL is still null. Retrying in 10s...")
-            time.sleep(10)
-            continue
         elif status == 'FAILED':
-            print(f"❌ Generation failed.")
+            print(f"❌ Generation failed on Leonardo's side.")
             return None
-            
-        print(f"Current Status: {status}...")
 
 # --- Test Execution ---
-print("🧪 STARTING SINGLE CLIP TEST")
+print("🧪 STARTING SINGLE CLIP TEST (WITH DEBUGGING)")
 gid = trigger_test_gen()
 
 if gid:
     file_path = wait_and_download(gid, "test_clip.mp4")
     if file_path:
-        print("\n☁️ Uploading test clip to Google Drive...")
+        print("\n☁️ Uploading to Google Drive...")
         upload_to_drive("test_clip.mp4", FOLDER_ID)
-        print("\n🎉 TEST SUCCESSFUL! Check your Google Drive.")
+        print("\n🎉 SUCCESS!")
     else:
-        print("❌ Test failed during download.")
+        print("❌ Script stopped (Timeout or Failure).")
 else:
-    print("❌ Test failed at API trigger.")
-
+    print("❌ API did not provide a Generation ID.")
 
 
 
