@@ -1,8 +1,9 @@
 import os
 import time
 import requests
-# MoviePy v2.0+ uses direct imports, not moviepy.editor
-from moviepy import VideoFileClip, concatenate_videoclips
+# MoviePy v2.0+ specific imports
+from moviepy.video.io.VideoFileClip import VideoFileClip
+from moviepy.video.compositing.concatenate import concatenate_videoclips
 from uploader import upload_to_drive
 
 # Config
@@ -42,10 +43,8 @@ def wait_and_download(gen_id, name):
         response = requests.get(url, headers=headers)
         res = response.json()
         
-        # Accessing the first element in the generations list
         job = res.get('generations_by_pk')
         if not job:
-            print("Could not find job data.")
             continue
             
         status = job.get('status')
@@ -71,26 +70,23 @@ for i in range(6): # 6 clips * 10s = 60s
         file_path = wait_and_download(gid, f"temp_{i}.mp4")
         if file_path:
             clip_names.append(file_path)
-    # Adding a small delay to avoid hitting rate limits
     time.sleep(5)
 
 if len(clip_names) > 0:
-    # Stitching
     print("\n🧵 Stitching clips together...")
     clips = [VideoFileClip(c) for c in clip_names]
     
-    # method="compose" ensures it works even if clip sizes differ slightly
+    # Concatenate the clips
     final_video = concatenate_videoclips(clips, method="compose")
     
     # Save the file
     final_video.write_videofile("final_video.mp4", codec="libx264", audio=False)
     
-    # Close clips to free up memory/prevent file lock
+    # Cleanup memory
     for c in clips:
         c.close()
 
-    # Upload
     print("\n☁️ Starting upload to Google Drive...")
     upload_to_drive("final_video.mp4", FOLDER_ID)
 else:
-    print("❌ No clips were generated. Skipping stitch and upload.")
+    print("❌ No clips were generated.")
