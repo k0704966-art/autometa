@@ -1,101 +1,100 @@
 import os
-import requests
 import time
+import requests
 from uploader import upload_video_to_drive
 
-# API Configuration
 LEONARDO_API_KEY = os.getenv("LEONARDO_API_KEY")
 PROMPT = "Hyper-realistic cinematic nature, 4k, drone shot of tropical island, sunset"
+
 HEADERS = {
     "authorization": f"Bearer {LEONARDO_API_KEY}",
     "accept": "application/json",
     "content-type": "application/json"
 }
 
+GENERATE_URL = "https://cloud.leonardo.ai/api/rest/v1/generations-text-to-video"
+STATUS_URL = "https://cloud.leonardo.ai/api/rest/v1/generations/{}"
+
+
 def generate_video():
-    url = "https://cloud.leonardo.ai/api/rest/v1/generations-text-to-video"
     payload = {
         "prompt": PROMPT,
         "model": "MOTION2",
         "isPublic": False
     }
-    
-    print("🚀 Requesting video from Leonardo AI...")
-    response = requests.post(url, json=payload, headers=HEADERS)
-    res = response.json()
-    
-    if 'motionVideoGenerationJob' not in res:
-        print(f"❌ API Error: {res}")
+
+    print("🚀 Requesting video generation...")
+    r = requests.post(GENERATE_URL, json=payload, headers=HEADERS, timeout=30)
+
+    if r.status_code != 200:
+        print("❌ Generation request failed:", r.text)
         return None
-        
-    gen_id = res['motionVideoGenerationJob']['generationId']
-    print(f"⏳ Generation ID: {gen_id}. Polling for completion...")
 
-    for i in range(20):
-        time.sleep(30)
-        status_url = f"https://cloud.leonardo.ai/api/rest/v1/generations/{gen_id}"
-        status_res = requests.get(status_url, headers=HEADERS).json()
-        
-        # Accessing the generation data
-        job = status_res.get('generations_by_pk', {})
-        status = job.get('status')
-        print(f"   [Check {i+1}] Status: {status}")
-        
-        if status == 'COMPLETE':
-            # Check all possible URL locations in the response
-            # 1. Check generated_videos list (Most common for newer API)
-            videos = job.get('generated_videos', [])
-            if videos and len(videos) > 0:
-                return videos[0].get('url')
-            
-            # 2. Check motionVideoUrl field
-            if job.get('motionVideoUrl'):
-                return job.get('motionVideoUrl')
-                
-            # 3. Check legacy fields
-            url = job.get('generated_video_all_mp4_url') or job.get('motionMP4URL')
-            if url:
-                return url
+    gen_id = r.json()["motionVideoGenerationJob"]["generationId"]
+    print(f"🆔 Generation ID: {gen_id}")
 
-            # 4. Deep check into variations if it exists
-            variations = job.get('motion_variations', [])
-            if variations:
-                return variations[0].get('url')
+    max_wait = 20 * 60
+    interval = 30
+    elapsed = 0
 
-            print("⚠️ Status is COMPLETE but no URL found in standard fields.")
-            print(f"DEBUG DATA: {job.keys()}") # Helps identify new fields
+    while elapsed < max_wait:
+        time.sleep(interval)
+        elapsed += interval
+
+        sr = requests.get(STATUS_URL.format(gen_id), headers=HEADERS, timeout=30)
+        if sr.status_code != 200:
+            print("⚠️ Status check failed, retrying...")
+            continue
+
+        job = sr.json().get("generations_by_pk", {})
+        status = job.get("status")
+        print(f"🔄 Status: {status}")
+
+        if status == "COMPLETE":
+            videos = job.get("generated_videos", [])
+            if videos:
+                return videos[0].get("url")
+            print("❌ No video URL found")
             return None
-            
-        elif status == 'FAILED':
+
+        if status == "FAILED":
+            print("❌ Generation failed")
             return None
-            
+
+    print("⏰ Generation timed out")
     return None
-    
-def main():
-    # Step 1: Generate
-    video_url = generate_video()
-    
-    if video_url:
-        filename = "final_video.mp4"
-        
-        # Step 2: Download
-        print(f"📥 Downloading video from: {video_url[:50]}...")
-        video_content = requests.get(video_url).content
+
+
+def download_video(video_url, filename):
+    print("📥 Downloading video...")
+    with requests.get(video_url, stream=True, timeout=60) as r:
+        r.raise_for_status()
         with open(filename, "wb") as f:
-            f.write(video_content)
-            
-        # Step 3: Upload
-        try:
-            upload_video_to_drive(filename)
-            print("✨ Final Video Uploaded Successfully!")
-        except Exception as e:
-            print(f"❌ Upload Error: {e}")
-        finally:
-            # Step 4: Cleanup
-            if os.path.exists(filename):
-                os.remove(filename)
-    else:
-        print("❌ Could not get a video URL.")
+            for chunk in r.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
+
+
+def main():
+    video_url = generate_video()
+    if not video_url:
+        return
+
+    filename = "final_video.mp4"
+
+    try:
+        download_video(video_url, filename)
+        upload_video_to_drive(filename)
+        print("✨ Video uploaded to Drive successfully!")
+
+    except Exception as e:
+        print("❌ Pipeline error:", e)
+
+    finally:
+        if os.path.exists(filename):
+            os.remove(filename)
+            print("🧹 Local file cleaned up")
+
 
 if __name__ == "__main__":
     main()
