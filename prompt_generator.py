@@ -2,7 +2,9 @@ import os
 import datetime
 from google import genai
 
-# ✅ Configure Gemini
+if not os.getenv("GEMINI_API_KEY"):
+    raise RuntimeError("❌ GEMINI_API_KEY is missing")
+
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 DAY_ROTATION = {
@@ -37,7 +39,7 @@ Rules:
 """
 
     response = client.models.generate_content(
-        model="gemini-1.5-flash",
+        model="gemini-1.5-pro",
         contents=instruction
     )
 
@@ -56,13 +58,13 @@ Previous scene:
 Create PART {part}:
 - Same environment & mood
 - New camera angle or motion
-- Visually different from previous
+- Visually different
 - Seamless continuation
 - One paragraph only
 """
 
     response = client.models.generate_content(
-        model="gemini-1.5-flash",
+        model="gemini-1.5-pro",
         contents=instruction
     )
 
