@@ -17,7 +17,6 @@ headers = {
 
 def trigger_test_gen():
     url = "https://cloud.leonardo.ai/api/rest/v1/generations-text-to-video"
-    # Simplified payload for 2026 MOTION2 model
     payload = {
         "prompt": PROMPT, 
         "isPublic": False,
@@ -47,13 +46,19 @@ def wait_and_download(gen_id, name):
         if not job: continue
             
         status = job.get('status')
-        if status == 'COMPLETE':
-            video_url = job.get('generated_video_all_mp4_url')
-            print(f"✅ Downloading test clip...")
+        # Check for COMPLETE status AND ensure a URL actually exists
+        video_url = job.get('generated_video_all_mp4_url')
+        
+        if status == 'COMPLETE' and video_url:
+            print(f"✅ URL Found! Downloading test clip...")
             video_data = requests.get(video_url).content
             with open(name, "wb") as f:
                 f.write(video_data)
             return name
+        elif status == 'COMPLETE' and not video_url:
+            print("🕒 Status COMPLETE but URL is still null. Retrying in 10s...")
+            time.sleep(10)
+            continue
         elif status == 'FAILED':
             print(f"❌ Generation failed.")
             return None
@@ -74,7 +79,6 @@ if gid:
         print("❌ Test failed during download.")
 else:
     print("❌ Test failed at API trigger.")
-
 
 
 
