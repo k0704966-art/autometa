@@ -1,30 +1,52 @@
 import os
 import json
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
 from uploader import upload_to_drive
 
-# This script only tests the Google Drive connection
 def run_connection_test():
     folder_id = os.getenv("FOLDER_ID")
     test_filename = "drive_test_success.txt"
     
+    # Load credentials to check permissions first
+    info = json.loads(os.environ["GDRIVE_CREDENTIALS"])
+    creds = service_account.Credentials.from_service_account_info(
+        info, scopes=['https://www.googleapis.com/auth/drive']
+    )
+    service = build('drive', 'v3', credentials=creds)
+
     print("🛠️ Starting Drive Connection Test...")
-    
-    # 1. Create a tiny dummy file
+
+    # 1. PRE-CHECK: Can the robot see the folder?
+    try:
+        print(f"🔍 Checking access to Folder ID: {folder_id}...")
+        folder_metadata = service.files().get(
+            fileId=folder_id, 
+            fields='name, capabilities',
+            supportsAllDrives=True
+        ).execute()
+        print(f"✅ Robot found folder: '{folder_metadata.get('name')}'")
+        
+        can_add_children = folder_metadata.get('capabilities', {}).get('canAddChildren')
+        print(f"ℹ️ Permission to write: {'YES' if can_add_children else 'NO'}")
+        
+    except Exception as e:
+        print(f"❌ PRE-CHECK FAILED: Cannot find folder. Error: {e}")
+        print("💡 FIX: Ensure you shared the folder with the service account email.")
+        return
+
+    # 2. Create tiny dummy file
     with open(test_filename, "w") as f:
         f.write("Google Drive connection is working perfectly!")
-    
-    # 2. Try to upload it
+
+    # 3. Attempt Upload using updated uploader logic
     try:
-        print(f"📡 Attempting to upload to Folder ID: {folder_id}")
+        print(f"📡 Attempting upload...")
         upload_to_drive(test_filename, folder_id)
-        print("\n✅ TEST SUCCESS: The file should be visible in your Drive folder now.")
+        print("\n✨ TEST SUCCESS: Check your Google Drive now!")
     except Exception as e:
-        print(f"\n❌ TEST FAILED: {str(e)}")
-        print("\nChecklist for failure:")
-        print("1. Did you share the Drive folder with the Service Account email?")
-        print("2. Is the GDRIVE_CREDENTIALS secret exactly correct (with { } braces)?")
+        print(f"\n❌ UPLOAD FAILED: {str(e)}")
     finally:
-        # Cleanup local file
         if os.path.exists(test_filename):
             os.remove(test_filename)
 
