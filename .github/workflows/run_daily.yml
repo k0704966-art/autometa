@@ -35,4 +35,4 @@ jobs:
           LEONARDO_API_KEY: ${{ secrets.LEONARDO_API_KEY }}
           GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
           FOLDER_ID: ${{ secrets.FOLDER_ID }}
-        run: python main.py
+        run: python test_drive.py
