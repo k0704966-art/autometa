@@ -1,6 +1,7 @@
 import os
 import time
 import requests
+# MoviePy v2.0+ uses direct imports, not moviepy.editor
 from moviepy import VideoFileClip, concatenate_videoclips
 from uploader import upload_to_drive
 
@@ -9,39 +10,87 @@ API_KEY = os.getenv("LEONARDO_API_KEY")
 FOLDER_ID = os.getenv("FOLDER_ID")
 PROMPT = "Cinematic drone shot of a futuristic cyberpunk city, 4k, neon lights, rain"
 
-headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
+headers = {
+    "Authorization": f"Bearer {API_KEY}", 
+    "Content-Type": "application/json",
+    "accept": "application/json"
+}
 
 def trigger_gen():
     url = "https://cloud.leonardo.ai/api/rest/v1/generations-text-to-video"
-    payload = {"prompt": PROMPT, "isPublic": False, "motionStrength": 5}
-    res = requests.post(url, json=payload, headers=headers).json()
+    payload = {
+        "prompt": PROMPT, 
+        "isPublic": False, 
+        "motionStrength": 5
+    }
+    print(f"🚀 Sending request to Leonardo AI...")
+    response = requests.post(url, json=payload, headers=headers)
+    res = response.json()
+    
+    if 'motionVideoGenerationJob' not in res:
+        print(f"❌ Error from API: {res}")
+        return None
+        
     return res['motionVideoGenerationJob']['generationId']
 
 def wait_and_download(gen_id, name):
     url = f"https://cloud.leonardo.ai/api/rest/v1/generations/{gen_id}"
+    print(f"⏳ Waiting for {name} to render...")
+    
     while True:
         time.sleep(20)
-        res = requests.get(url, headers=headers).json()
-        job = res['generations_by_pk']
-        if job['status'] == 'COMPLETE':
-            video_url = job['generated_video_all_mp4_url']
+        response = requests.get(url, headers=headers)
+        res = response.json()
+        
+        # Accessing the first element in the generations list
+        job = res.get('generations_by_pk')
+        if not job:
+            print("Could not find job data.")
+            continue
+            
+        status = job.get('status')
+        if status == 'COMPLETE':
+            video_url = job.get('generated_video_all_mp4_url')
+            print(f"✅ Downloading {name}...")
+            video_data = requests.get(video_url).content
             with open(name, "wb") as f:
-                f.write(requests.get(video_url).content)
+                f.write(video_data)
             return name
-        print(f"Status for {name}: {job['status']}...")
+        elif status == 'FAILED':
+            print(f"❌ Generation failed for {name}")
+            return None
+            
+        print(f"Current Status: {status}...")
 
-# Main Loop
+# --- Main Execution ---
 clip_names = []
 for i in range(6): # 6 clips * 10s = 60s
-    print(f"🎬 Generating Clip {i+1}/6")
+    print(f"\n🎬 Starting Clip {i+1}/6")
     gid = trigger_gen()
-    clip_names.append(wait_and_download(gid, f"temp_{i}.mp4"))
+    if gid:
+        file_path = wait_and_download(gid, f"temp_{i}.mp4")
+        if file_path:
+            clip_names.append(file_path)
+    # Adding a small delay to avoid hitting rate limits
+    time.sleep(5)
 
-# Stitching
-print("🧵 Stitching clips...")
-clips = [VideoFileClip(c) for c in clip_names]
-final_video = concatenate_videoclips(clips, method="compose")
-final_video.write_videofile("final_video.mp4", codec="libx264")
+if len(clip_names) > 0:
+    # Stitching
+    print("\n🧵 Stitching clips together...")
+    clips = [VideoFileClip(c) for c in clip_names]
+    
+    # method="compose" ensures it works even if clip sizes differ slightly
+    final_video = concatenate_videoclips(clips, method="compose")
+    
+    # Save the file
+    final_video.write_videofile("final_video.mp4", codec="libx264", audio=False)
+    
+    # Close clips to free up memory/prevent file lock
+    for c in clips:
+        c.close()
 
-# Upload
-upload_to_drive("final_video.mp4", FOLDER_ID)
+    # Upload
+    print("\n☁️ Starting upload to Google Drive...")
+    upload_to_drive("final_video.mp4", FOLDER_ID)
+else:
+    print("❌ No clips were generated. Skipping stitch and upload.")
