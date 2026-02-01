@@ -1,32 +1,28 @@
-name: Daily AI Video Automation
+name: AI Video Automation
 
 on:
-  schedule:
-    # Runs at 00:00 UTC every day
-    - cron: '0 0 * * *'
   workflow_dispatch:
-    # Allows you to run it manually from the "Actions" tab for testing
 
 jobs:
-  build-and-run:
+  run:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
 
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
 
-      - name: Run Video Automation
-        env:
-          LEONARDO_API_KEY: ${{ secrets.LEONARDO_API_KEY }}
-          GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
-        run: python main.py
+    - name: Run automation
+      env:
+        LEONARDO_API_KEY: ${{ secrets.LEONARDO_API_KEY }}
+        GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
+      run: |
+        python main.py
