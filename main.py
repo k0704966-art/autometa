@@ -1,79 +1,50 @@
 import os
-import requests
-import time
-from moviepy import VideoFileClip, concatenate_videoclips
-from uploader import upload_video_to_drive
+import json
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
-# Config
-API_KEY = os.getenv("LEONARDO_API_KEY")
-PROMPT = "Hyper-realistic cinematic nature, 4k, drone shot of tropical island, sunset"
-headers = {"authorization": f"Bearer {API_KEY}", "accept": "application/json", "content-type": "application/json"}
-
-def generate_clip(index):
-    url = "https://cloud.leonardo.ai/api/rest/v1/generations-text-to-video"
-    payload = {"prompt": f"{PROMPT}, angle {index}", "model": "MOTION2", "isPublic": False}
+def upload_video_to_drive(file_path, folder_name="ytauto"):
+    SCOPES = ["https://www.googleapis.com/auth/drive"]
     
-    response = requests.post(url, json=payload, headers=headers)
-    res = response.json()
+    # Load token from your GitHub Secret
+    creds_info = json.loads(os.environ["GOOGLE_TOKEN"])
+    creds = Credentials.from_authorized_user_info(creds_info, SCOPES)
     
-    if 'motionVideoGenerationJob' not in res:
-        print(f"❌ API Error: {res}")
-        return None
-        
-    gen_id = res['motionVideoGenerationJob']['generationId']
-    print(f"⏳ Processing Test Clip (ID: {gen_id})...")
+    # Refresh token if expired
+    if creds.expired and creds.refresh_token:
+        from google.auth.transport.requests import Request
+        creds.refresh(Request())
 
-    # Poll for completion (Max 10 mins)
-    for _ in range(20):
-        time.sleep(30)
-        status_res = requests.get(f"https://cloud.leonardo.ai/api/rest/v1/generations/{gen_id}", headers=headers).json()
-        job = status_res.get('generations_by_pk', {})
-        status = job.get('status')
-        print(f"   Status: {status}...")
-        
-        if status == 'COMPLETE':
-            return job.get('generated_video_all_mp4_url')
-        elif status == 'FAILED':
-            return None
-    return None
+    service = build("drive", "v3", credentials=creds)
 
-def main():
-    clips = []
-    clip_filenames = []
-    
-    # TEST MODE: Only range(1) to generate a single video
-    for i in range(1):
-        video_url = generate_clip(i)
-        if video_url:
-            filename = f"test_clip_{i}.mp4"
-            print(f"📥 Downloading clip from Leonardo...")
-            video_data = requests.get(video_url).content
-            with open(filename, "wb") as f:
-                f.write(video_data)
-            
-            clips.append(VideoFileClip(filename))
-            clip_filenames.append(filename)
-            print(f"✅ Test Clip {i+1} ready.")
-        
-    if clips:
-        print("🧵 Processing video for upload...")
-        # Even for 1 clip, we run it through MoviePy to test the codec/render
-        final_video = concatenate_videoclips(clips, method="compose")
-        output_name = f"test_upload_{int(time.time())}.mp4"
-        final_video.write_videofile(output_name, codec="libx264")
-        
-        # Close to release file lock
-        for c in clips: c.close()
-        
-        print("☁️ Triggering Drive Upload...")
-        upload_video_to_drive(output_name)
-        
-        # Cleanup
-        os.remove(output_name)
-        for f in clip_filenames: os.remove(f)
-        print("✨ Test Finished Successfully!")
+    # 1. Find or create the folder
+    query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    results = service.files().list(q=query, fields="files(id)").execute()
+    folders = results.get("files", [])
+
+    if folders:
+        folder_id = folders[0]["id"]
+        print(f"📁 Using existing folder: {folder_name} ({folder_id})")
     else:
-        print("❌ Test failed: No clips were generated.")
+        folder_metadata = {"name": folder_name, "mimeType": "application/vnd.google-apps.folder"}
+        folder = service.files().create(body=folder_metadata, fields="id").execute()
+        folder_id = folder["id"]
+        print(f"📁 Created new folder: {folder_name} ({folder_id})")
 
-if __name__ == "__main__":
-    main()
+    # 2. Upload the file
+    file_metadata = {
+        "name": os.path.basename(file_path),
+        "parents": [folder_id]
+    }
+    media = MediaFileUpload(file_path, mimetype="video/mp4", resumable=True)
+    
+    print(f"📡 Uploading {file_path}...")
+    file = service.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields="id"
+    ).execute()
+    
+    print(f"✅ Drive Upload Success! File ID: {file.get('id')}")
+    return file.get('id')
