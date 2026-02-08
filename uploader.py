@@ -78,6 +78,44 @@ def upload_video_to_drive(filename):
 
     print("📤 Drive file ID:", file["id"])
 
+def upload_file_to_drive(filepath):
+    service = get_drive_service()
+
+    # ✅ Ensure ytauto folder exists
+    folder_id = get_or_create_folder(service, DRIVE_FOLDER_NAME)
+    filename = os.path.basename(filepath)
+
+    # 🔍 Check if file already exists in Drive folder
+    query = f"name='{filename}' and '{folder_id}' in parents and trashed=false"
+    results = service.files().list(
+        q=query,
+        fields="files(id)"
+    ).execute()
+
+    files = results.get("files", [])
+
+    media = MediaFileUpload(filepath, resumable=True)
+
+    if files:
+        # 🔁 Overwrite existing file
+        file_id = files[0]["id"]
+        service.files().update(
+            fileId=file_id,
+            media_body=media
+        ).execute()
+        print(f"🔁 Overwritten on Drive: {filename}")
+    else:
+        # ☁️ Upload new file
+        file_metadata = {
+            "name": filename,
+            "parents": [folder_id]
+        }
+        service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields="id"
+        ).execute()
+        print(f"☁️ Uploaded to Drive: {filename}")
 
 
 
