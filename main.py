@@ -30,13 +30,34 @@ POLL_INTERVAL = 25            # seconds (slightly faster)
 MAX_STATUS_ERRORS = 5         # tolerate temporary API issues
 
 OUTPUT_DIR = "ytauto"
-
+# Drive-aware output
+DRIVE_BASE = "/content/drive/MyDrive"
+OUTPUT_DIR1 = (
+    os.path.join(DRIVE_BASE, "ytauto")
+    if os.path.exists(DRIVE_BASE)
+    else "ytauto"
+)
+PROMPT_FILE = os.path.join(OUTPUT_DIR1, "prompts.json")
 # =========================
 # HELPERS
 # =========================
 def ensure_output_folder():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     print(f"📁 Output folder ready: {OUTPUT_DIR}")
+
+def load_prompts():
+    if not os.path.exists(PROMPT_FILE):
+        raise RuntimeError(f"❌ prompts.json not found at {PROMPT_FILE}")
+
+    with open(PROMPT_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    scenes = data.get("scenes")
+    if not isinstance(scenes, list) or not scenes:
+        raise RuntimeError("❌ prompts.json contains no valid scenes")
+
+    print(f"🧠 Loaded {len(scenes)} scene prompts")
+    return scenes
 
 
 def safe_request(method, url, **kwargs):
@@ -159,30 +180,57 @@ def download_video(video_url: str, filepath: str):
 # =========================
 # MAIN PIPELINE
 # =========================
+# def main():
+#     ensure_output_folder()
+
+#     prompts = []
+
+#     print("🧠 Generating prompts...")
+#     first_prompt = generate_initial_prompt()
+#     prompts.append(first_prompt)
+
+#     for i in range(2, TOTAL_CLIPS + 1):
+#         prompts.append(
+#             generate_continuation_prompt(prompts[-1], i)
+#         )
+
+#     for idx, prompt in enumerate(prompts, start=1):
+#         print(f"\n🎬 Clip {idx}/{TOTAL_CLIPS}")
+
+#         try:
+#             video_url = generate_video(prompt)
+#             if not video_url:
+#                 print("⚠️ Skipping clip")
+#                 continue
+
+#             filename = os.path.join(OUTPUT_DIR, f"clip_{idx}.mp4")
+
+#             download_video(video_url, filename)
+#             upload_video_to_drive(filename)
+
+#             print(f"✅ Clip {idx} uploaded")
+
+#         except Exception as e:
+#             print(f"❌ Clip {idx} error:", e)
+
+#         finally:
+#             if os.path.exists(filename):
+#                 os.remove(filename)
+#                 print("🧹 Local cleanup complete")
 def main():
     ensure_output_folder()
-
-    prompts = []
-
-    print("🧠 Generating prompts...")
-    first_prompt = generate_initial_prompt()
-    prompts.append(first_prompt)
-
-    for i in range(2, TOTAL_CLIPS + 1):
-        prompts.append(
-            generate_continuation_prompt(prompts[-1], i)
-        )
+    prompts = load_prompts()
 
     for idx, prompt in enumerate(prompts, start=1):
-        print(f"\n🎬 Clip {idx}/{TOTAL_CLIPS}")
+        print(f"\n🎬 Clip {idx}/{len(prompts)}")
+
+        filename = os.path.join(OUTPUT_DIR, f"clip_{idx}.mp4")
 
         try:
             video_url = generate_video(prompt)
             if not video_url:
                 print("⚠️ Skipping clip")
                 continue
-
-            filename = os.path.join(OUTPUT_DIR, f"clip_{idx}.mp4")
 
             download_video(video_url, filename)
             upload_video_to_drive(filename)
@@ -200,6 +248,9 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# if __name__ == "__main__":
+#     main()
 
 
 
