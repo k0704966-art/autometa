@@ -3,15 +3,30 @@ import json
 import datetime
 from google import genai
 
-# ---------- CONFIG ----------
-OUTPUT_DIR = "ytauto"
-PROMPT_FILE = os.path.join(OUTPUT_DIR, "prompts.json")
-
+# ---------- GEMINI ----------
 if not os.getenv("GEMINI_API_KEY"):
     raise RuntimeError("❌ GEMINI_API_KEY is missing")
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
+# ---------- PATH RESOLUTION ----------
+def get_output_paths():
+    # Preferred: Google Drive (Colab)
+    drive_base = "/content/drive/MyDrive"
+
+    if os.path.exists(drive_base):
+        output_dir = os.path.join(drive_base, "ytauto")
+    else:
+        # Fallback: local / CI
+        output_dir = "ytauto"
+
+    os.makedirs(output_dir, exist_ok=True)
+    return output_dir, os.path.join(output_dir, "prompts.json")
+
+
+OUTPUT_DIR, PROMPT_FILE = get_output_paths()
+
+# ---------- THEME ----------
 DAY_ROTATION = {
     "Monday": "facts_explainer",
     "Tuesday": "did_you_know",
@@ -22,13 +37,13 @@ DAY_ROTATION = {
     "Sunday": "light_recap"
 }
 
-# ---------- HELPERS ----------
 def _today_theme():
-    today = datetime.datetime.utcnow().strftime("%A")
-    return DAY_ROTATION.get(today, "cinematic_story")
+    return DAY_ROTATION.get(
+        datetime.datetime.utcnow().strftime("%A"),
+        "cinematic_story"
+    )
 
-
-# ---------- MAIN PROMPT GENERATOR ----------
+# ---------- PROMPT GENERATOR ----------
 def generate_scene_prompts():
     theme = _today_theme()
 
@@ -50,12 +65,10 @@ Rules:
 - Each prompt = ONE paragraph
 - No quotes
 - No explanations
-- Prompts must feel like continuous scenes of the same story
-- Change camera motion every time (drone sweep, orbit, fly-through, top-down, tracking, push-in, wide pull-back)
+- Continuous cinematic flow
+- Different camera motion every scene
 
-Output format:
-Return ONLY valid JSON:
-
+Output format (JSON only):
 [
   "scene 1 prompt",
   "scene 2 prompt",
@@ -75,20 +88,17 @@ Return ONLY valid JSON:
     if not response.candidates:
         raise RuntimeError("❌ Gemini returned no output")
 
-    raw_text = response.candidates[0].content.parts[0].text.strip()
+    raw = response.candidates[0].content.parts[0].text.strip()
 
     try:
-        prompts = json.loads(raw_text)
+        prompts = json.loads(raw)
     except json.JSONDecodeError:
-        raise RuntimeError(f"❌ Invalid JSON from Gemini:\n{raw_text}")
+        raise RuntimeError(f"❌ Invalid JSON from Gemini:\n{raw}")
 
     if not isinstance(prompts, list) or len(prompts) != 7:
         raise RuntimeError("❌ Gemini did not return exactly 7 prompts")
 
-    # ---------- ENSURE OUTPUT FOLDER ----------
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-    # ---------- WRITE / OVERWRITE prompts.json ----------
+    # ---------- WRITE / OVERWRITE ----------
     with open(PROMPT_FILE, "w", encoding="utf-8") as f:
         json.dump(
             {
@@ -101,8 +111,9 @@ Return ONLY valid JSON:
             ensure_ascii=False
         )
 
-    print(f"✅ prompts.json written to {PROMPT_FILE}")
+    print(f"✅ prompts.json written to: {PROMPT_FILE}")
     return prompts
+
 
 
 
